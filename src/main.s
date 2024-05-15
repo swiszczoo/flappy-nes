@@ -7,6 +7,8 @@
 .import screen_main_menu_vblank
 .import screen_main_menu_loop
 
+.import highscore_load
+
 .segment "ZEROPAGE"
     SCRATCH: .res 16
     wait_for_vblank: .res 1 ; 0xFF if waiting for vblank
@@ -14,7 +16,7 @@
     my_ppuctrl: .res 1
     my_scroll_x: .res 1
     my_scroll_y: .res 1
-    frame_counter: .res 1
+    frame_counter: .res 2
     game_state: .res 1
     game_state_vblank_addr: .res 2
     game_state_loop_addr: .res 2
@@ -23,10 +25,17 @@
     global_chr_bank: .res 1
     gamepad_1: .res 1
     gamepad_2: .res 1
+    gamepad_1_chg: .res 1
+    gamepad_2_chg: .res 1
+
+    hiscore_digits: .res 4
+    current_score_digits: .res 4
+    new_hiscore_flag: .res 1
 
     .export frame_counter, my_ppuctrl, my_scroll_x, my_scroll_y, skip_nmi
     .export SCRATCH, palette_addr, global_scroll_x, global_chr_bank
-    .export gamepad_1, gamepad_2
+    .export gamepad_1, gamepad_2, hiscore_digits, current_score_digits
+    .export new_hiscore_flag
 
 
 .segment "OAM"
@@ -46,6 +55,9 @@ main:
 
     ; set CHR ROM page 0
     STA CHR_PAGE
+
+    ; load highscore
+    JSR highscore_load
 
     ; set game_state_vblank func ptr to something ok
     LDA func_screen_vblank_lo
@@ -135,6 +147,14 @@ vblank_handler:
     LDA my_scroll_y
     STA PPUSCROLL
 
+    ; save negated previous controller readings to scratch
+    LDA gamepad_1
+    EOR #$FF
+    STA SCRATCH+0
+    LDA gamepad_2
+    EOR #$FF
+    STA SCRATCH+1
+
     ; poll controller inputs
     ; https://www.nesdev.org/wiki/Controller_reading_code
     LDA #1
@@ -152,6 +172,14 @@ vblank_handler:
     ROL gamepad_2
     BCC :-
 
+    ; save buttons that were pressed just in this frame
+    LDA gamepad_1
+    AND SCRATCH+0
+    STA gamepad_1_chg
+    LDA gamepad_2
+    AND SCRATCH+1
+    STA gamepad_2_chg
+
     LDA #.hibyte(:+-1)
     PHA
     LDA #.lobyte(:+-1)
@@ -159,6 +187,9 @@ vblank_handler:
     JMP (game_state_loop_addr)      ; indirectly call second part of the screen loop
 :
     INC frame_counter
+    BNE :+
+    INC frame_counter+1
+:
     ; fallthrough to nop_sub
 nop_sub: ; This routine exists to allow placing it in dynamic jump tables
     RTS  ; to do nothing
@@ -266,6 +297,43 @@ wait_for_szh:
     RTS
 
 .export wait_for_szh
+
+; inputs:
+; SCRATCH+0 - low byte of metasprite def address
+; SCRATCH+1 - hi byte of metasprite def address
+; SCRATCH+2 - X offset
+; SCRATCH+3 - Y offset
+; X - OAM offset
+draw_metasprite:
+    LDY #0
+:   INY
+    LDA (SCRATCH+0), Y
+    BEQ :+
+    DEY
+    LDA (SCRATCH+0), Y
+    CLC
+    ADC SCRATCH+3
+    STA OAM+0, X
+    INY
+    LDA (SCRATCH+0), Y
+    STA OAM+1, X
+    INY
+    LDA (SCRATCH+0), Y
+    STA OAM+2, X
+    INY
+    LDA (SCRATCH+0), Y
+    CLC
+    ADC SCRATCH+2
+    STA OAM+3, X
+    INY
+    TXA
+    CLC
+    ADC #4
+    TAX
+    JMP :-
+:   RTS
+
+.export draw_metasprite
 
 ;
 ; Some lookup tables

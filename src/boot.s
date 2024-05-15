@@ -34,15 +34,16 @@ reset:
     ; One thing we can do with this time is put RAM in a known state.
     ; Here we fill it with $00, which matches what (say) a C compiler
     ; expects for BSS.  Conveniently, X is still 0.
-    TXA
 @clrmem:
+    LDA #$00
     STA $000,x
     STA $100,x
-    STA $200,x
     STA $300,x
     STA $400,x
     STA $500,x
     STA $600,x
+    LDA #$FF
+    STA $200,x  ; OAM sprites are set to be offscreen
     ;STA $700,x ; We're not erasing page $700, because there will be our highscore
     INX
     BNE @clrmem
