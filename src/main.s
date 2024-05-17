@@ -6,6 +6,10 @@
 .import screen_main_menu_destroy
 .import screen_main_menu_vblank
 .import screen_main_menu_loop
+.import screen_transition_init
+.import screen_transition_destroy
+.import screen_transition_vblank
+.import screen_transition_loop
 
 .import highscore_load
 
@@ -35,6 +39,7 @@
     .export frame_counter, my_ppuctrl, my_scroll_x, my_scroll_y, skip_nmi
     .export SCRATCH, palette_addr, global_scroll_x, global_chr_bank
     .export gamepad_1, gamepad_2, hiscore_digits, current_score_digits
+    .export gamepad_1_chg, gamepad_2_chg
     .export new_hiscore_flag
 
 
@@ -131,6 +136,35 @@ vblank_handler:
 
     LDA global_chr_bank
     STA CHR_PAGE
+
+    ; update PPUCTRL to set PPUADDR increment
+    LDA my_ppuctrl
+    STA PPUCTRL
+
+    ; update PPU RAM
+    LDX #0
+@ppu_loop:
+    LDA PPU_UPD_BUF, X
+    BEQ @ppu_end                    ; if we read a block of length 0, end the loop
+    STA SCRATCH+0
+    INX
+
+    LDA PPU_UPD_BUF, X
+    STA PPUADDR
+    INX
+    LDA PPU_UPD_BUF, X
+    STA PPUADDR
+    INX
+
+@ppu_inner_loop:
+    LDA SCRATCH+0
+    BEQ @ppu_loop
+
+    LDA PP
+    
+    DEC SCRATCH+0
+
+@ppu_end:
 
     LDA #.hibyte(:+-1)
     PHA
@@ -264,6 +298,7 @@ set_game_state:
     .addr :+-1
     .addr nop_sub                   ; STATE_NO_SCREEN
     .addr screen_main_menu_destroy  ; STATE_MAIN_MENU
+    .addr screen_transition_destroy  ; STATE_TRANSITION
 :
 
     PLA
@@ -274,6 +309,7 @@ set_game_state:
     .addr :+-1
     .addr nop_sub                   ; STATE_NO_SCREEN
     .addr screen_main_menu_init     ; STATE_MAIN_MENU
+    .addr screen_transition_init    ; STATE_TRANSITION
 :   
 
     ; set game_state_vblank func ptr to a new vblank handler
@@ -292,8 +328,11 @@ set_game_state:
 
 ; this routine busy waits for sprite-zero-hit
 wait_for_szh:
+    ; wait for SZH flag to be cleared
     BIT PPUSTATUS
-    BVC wait_for_szh
+    BVS wait_for_szh
+:   BIT PPUSTATUS
+    BVC :-
     RTS
 
 .export wait_for_szh
@@ -342,18 +381,22 @@ draw_metasprite:
 func_screen_vblank_lo:
     .byte .lobyte(screen0_vblank)                   ; STATE_NO_SCREEN
     .byte .lobyte(screen_main_menu_vblank)          ; STATE_MAIN_MENU
+    .byte .lobyte(screen_transition_vblank)         ; STATE_TRANSITION
 
 func_screen_vblank_hi:
     .byte .hibyte(screen0_vblank)                   ; STATE_NO_SCREEN
     .byte .hibyte(screen_main_menu_vblank)          ; STATE_MAIN_MENU
+    .byte .hibyte(screen_transition_vblank)         ; STATE_TRANSITION
 
 func_screen_loop_lo:
     .byte .lobyte(nop_sub)                          ; STATE_NO_SCREEN
     .byte .lobyte(screen_main_menu_loop)            ; STATE_MAIN_MENU
+    .byte .lobyte(screen_transition_loop)           ; STATE_TRANSITION
 
 func_screen_loop_hi:
     .byte .hibyte(nop_sub)                          ; STATE_NO_SCREEN
     .byte .hibyte(screen_main_menu_loop)            ; STATE_MAIN_MENU
+    .byte .hibyte(screen_transition_loop)           ; STATE_TRANSITION
 
 .export main, irq, nmi
 .export dynjmp, dynjsr

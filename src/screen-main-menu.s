@@ -6,12 +6,15 @@
 .import draw_metasprite
 .import wait_for_szh
 
+.import set_game_state
+
 .segment "ZEROPAGE"
     .import SCRATCH
     .import palette_addr
     .import frame_counter, my_ppuctrl, my_scroll_x, my_scroll_y
     .import skip_nmi, global_scroll_x, global_chr_bank
     .import hiscore_digits
+    .import gamepad_1_chg
 
 .segment "OAM"
     .import OAM
@@ -205,6 +208,8 @@ screen_main_menu_init:
     RTS
 
 screen_main_menu_destroy:
+    ; remove all unnecessary sprites from the screen
+
     RTS
 
 screen_main_menu_vblank:
@@ -272,10 +277,6 @@ screen_main_menu_loop:
     LDA current_palette
     CMP #1
     BMI @no_moving_bg               ; no moving background
-
-    ; wait for SZH flag to be cleared
-:   BIT PPUSTATUS
-    BVS :-
     
     ; scroll main bg every two frames
     ; bankswitch every four frames
@@ -294,6 +295,17 @@ screen_main_menu_loop:
     STA global_chr_bank
 
 @no_scroll:
+    ; check if A button is pressed in this frame
+    LDA current_palette
+    CMP #3
+    BCC @no_button_press
+    LDA gamepad_1_chg
+    AND BUTTON_A
+    BEQ @no_button_press
+
+    JSR start_game
+
+@no_button_press:
     JSR wait_for_szh                ; we spin-wait for Sprite 0 Hit
     BIT PPUSTATUS
 
@@ -410,6 +422,10 @@ draw_bird:
     STA SCRATCH+3
     LDX #4
     JMP draw_metasprite
+
+start_game:
+    LDA STATE_GAME_TRANSITION
+    JMP set_game_state
 
 ;
 ; Lookup tables
