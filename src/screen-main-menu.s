@@ -8,6 +8,10 @@
 
 .import set_game_state
 
+.import draw_bird
+.import update_bird
+.import reset_bird
+
 .segment "ZEROPAGE"
     .import SCRATCH
     .import palette_addr
@@ -15,6 +19,8 @@
     .import skip_nmi, global_scroll_x, global_chr_bank
     .import hiscore_digits
     .import gamepad_1_chg
+    .import ppu_update_addr
+    .import oam_offset
 
 .segment "OAM"
     .import OAM
@@ -25,9 +31,9 @@
     prev_palette: .res 1
     jump_text_offset: .res 1
     jump_text_start_sprite: .res 1
-    bird_animation_frames_left: .res 1
-    bird_animation_state: .res 1
+    menu_exit_stage: .res 1
 
+    .import bird_pos_x, bird_pos_y
 
 .segment "CODE"
 screen_main_menu_init:
@@ -42,6 +48,9 @@ screen_main_menu_init:
     ; set global scroll and CHR bank to 0
     STA global_scroll_x
     STA global_chr_bank
+
+    ; set exit stage
+    STA menu_exit_stage
 
     ;disable NMI
     LDA #$FF
@@ -196,6 +205,8 @@ screen_main_menu_init:
     DEC SCRATCH+2
     BNE @topscore_loop
 
+    ; reset bird
+    JSR reset_bird
 
     ; enable NMI
     LDA #0
@@ -295,8 +306,11 @@ screen_main_menu_loop:
     STA global_chr_bank
 
 @no_scroll:
+    LDA menu_exit_stage
+    BNE @screen_exiting
+
     ; check if A button is pressed in this frame
-    LDA current_palette
+    LDA prev_palette
     CMP #3
     BCC @no_button_press
     LDA gamepad_1_chg
@@ -304,6 +318,19 @@ screen_main_menu_loop:
     BEQ @no_button_press
 
     JSR start_game
+    JMP @no_button_press
+
+@screen_exiting:
+    LDX menu_exit_stage
+    LDA screen_exit_stages_lo, X
+    STA ppu_update_addr+0
+    LDA screen_exit_stages_hi, X
+    STA ppu_update_addr+1
+    INX
+    STX menu_exit_stage
+    CPX #(screen_exit_stages_hi - screen_exit_stages_lo)
+    BCC @no_button_press
+    JSR next_screen
 
 @no_button_press:
     JSR wait_for_szh                ; we spin-wait for Sprite 0 Hit
@@ -315,21 +342,13 @@ screen_main_menu_loop:
 
     ; now some precise timing, we need to wait for 16 scanlines
     ; then set the palette color to a value from lookup table
-    LDX #$80
-:   NOP
-    NOP
-    NOP
-    NOP
-    DEX
-    BNE :-
-    NOP
-    NOP
+    JSR wait_for_16_scanlines
 
     ; call precisely timed routine
     JSR draw_ground
 
 @no_moving_bg:
-    JSR draw_bird
+    JSR draw_menu_bird
     RTS
 
 .define ANIMATION_DELAY             #3
@@ -392,26 +411,12 @@ main_menu_text_animation_step:
 @exit_animation:
     RTS
 
-draw_bird:
-    LDA bird_animation_frames_left
-    BNE :+
-    INC bird_animation_state
-    LDA #5
-    STA bird_animation_frames_left
-:   DEC bird_animation_frames_left
-    LDA bird_animation_state
-    CMP #(bird_sprite_animation_end - bird_sprite_animation)
-    BCC :+
-    LDA #0
-    STA bird_animation_state
-:   LDX bird_animation_state
-    LDA bird_sprite_animation, X
-    TAX
-    LDA bird_sprite_states_lo, X
-    STA SCRATCH+0
-    LDA bird_sprite_states_hi, X
-    STA SCRATCH+1
+draw_menu_bird:
+    LDX #4
+    STX oam_offset
     LDA #$80
+    STA bird_pos_x
+
     STA SCRATCH+2
     LDA frame_counter
     LSR A
@@ -419,18 +424,47 @@ draw_bird:
     AND #31
     TAX
     LDA bird_animation_y, X
-    STA SCRATCH+3
-    LDX #4
-    JMP draw_metasprite
+    STA bird_pos_y
+
+    JSR update_bird
+    JMP draw_bird
 
 start_game:
+    LDA screen_exit_stages_lo
+    STA ppu_update_addr+0
+    LDA screen_exit_stages_hi
+    STA ppu_update_addr+1
+    LDA #1
+    STA menu_exit_stage
+    RTS
+
+next_screen:
     LDA STATE_GAME_TRANSITION
     JMP set_game_state
+
+;
+; Timed code
+; ==========
+.segment "TMCODE"
+.align 256
+wait_for_16_scanlines:
+    LDX #$7F
+:   NOP
+    NOP
+    NOP
+    NOP
+    DEX
+    BNE :-
+    NOP
+    NOP
+    NOP
+    RTS
 
 ;
 ; Lookup tables
 ; =============
 
+.segment "RODATA"
 menu_nametable:
     .incbin "menu.bin"
 
@@ -494,58 +528,57 @@ jumping_text_y_offset_end:
 top_score_offsets_x:
     .byte $80, $7C, $78, $74, $70
 
-bird_sprite_state_1:
-    .byte 256-8, $44, $00, 256-8
-    .byte 256-8, $45, $00, 0
-    .byte 0, $54, $00, 256-7
-    .byte 256-1, $55, $00, 1
-    .byte 256-8, $64, $01, 256-8
-    .byte 256-8, $65, $01, 0
-    .byte 0, $74, $01, 256-8
-    .byte 0, $75, $01, 0
-    .byte 0, 0, 0, 0
-
-bird_sprite_state_2:
-    .byte 256-8, $46, $00, 256-8
-    .byte 256-8, $47, $00, 0
-    .byte 0, $56, $00, 256-7
-    .byte 256-1, $57, $00, 1
-    .byte 256-8, $66, $01, 256-8
-    .byte 256-8, $67, $01, 0
-    .byte 0, $76, $01, 256-8
-    .byte 0, $77, $01, 0
-    .byte 0, 0, 0, 0
-
-bird_sprite_state_3:
-    .byte 256-8, $48, $00, 256-7
-    .byte 256-8, $49, $00, 1
-    .byte 256-1, $58, $00, 256-8
-    .byte 0, $59, $00, 0
-    .byte 256-8, $68, $01, 256-8
-    .byte 256-8, $69, $01, 0
-    .byte 0, $78, $01, 256-8
-    .byte 0, $79, $01, 0
-    .byte 0, 0, 0, 0
-
-bird_sprite_states_lo:
-    .byte .lobyte(bird_sprite_state_1)
-    .byte .lobyte(bird_sprite_state_2)
-    .byte .lobyte(bird_sprite_state_3)
-    
-bird_sprite_states_hi:
-    .byte .hibyte(bird_sprite_state_1)
-    .byte .hibyte(bird_sprite_state_2)
-    .byte .hibyte(bird_sprite_state_3)
-
-bird_sprite_animation:
-    .byte $00, $00, $01, $02, $02, $01
-bird_sprite_animation_end:
-
 bird_animation_y:
     .byte 100, 101, 102, 103, 104, 104, 105, 105, 105, 105
     .byte 105, 104, 104, 103, 102, 101, 100, 99, 98, 97
     .byte 96, 96, 95, 95, 95, 95, 95, 96, 96, 97
     .byte 98, 99
+
+screen_exit_stage_1:
+    .byte $00
+    .byte 12, $20, $6A, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+    .byte 12, $20, $8A, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+    .byte 12, $20, $AA, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+    .byte 6, $20, $D0, $00, $00, $00, $00, $00, $00
+    .byte 4, $23, $C2, $55, $55, $55, $55
+    .byte 4, $23, $CA, $55, $55, $55, $55
+    .byte $00
+
+screen_exit_stage_2:
+    .byte $00
+    .byte 6, $20, $ED, $00, $00, $00, $00, $00, $00
+    .byte 26, $22, $E3
+    .res 26, $03
+    .byte $00
+
+screen_exit_stage_3:
+    .byte $00
+    .byte 12, $24, $6A, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+    .byte 12, $24, $8A, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+    .byte 12, $24, $AA, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+    .byte 6, $24, $D0, $00, $00, $00, $00, $00, $00
+    .byte 4, $27, $C2, $55, $55, $55, $55
+    .byte 4, $27, $CA, $55, $55, $55, $55
+    .byte $00
+
+screen_exit_stage_4:
+    .byte $00
+    .byte 6, $24, $ED, $00, $00, $00, $00, $00, $00
+    .byte 26, $26, $E3
+    .res 26, $03
+    .byte $00
+
+screen_exit_stages_lo:
+    .byte .lobyte(screen_exit_stage_1)
+    .byte .lobyte(screen_exit_stage_2)
+    .byte .lobyte(screen_exit_stage_3)
+    .byte .lobyte(screen_exit_stage_4)
+
+screen_exit_stages_hi:
+    .byte .hibyte(screen_exit_stage_1)
+    .byte .hibyte(screen_exit_stage_2)
+    .byte .hibyte(screen_exit_stage_3)
+    .byte .hibyte(screen_exit_stage_4)
 
 .export screen_main_menu_init
 .export screen_main_menu_destroy

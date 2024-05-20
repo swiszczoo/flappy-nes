@@ -2,6 +2,10 @@
 .include "registers.inc"
 
 ; screen imports
+.import screen_instructions_init
+.import screen_instructions_destroy
+.import screen_instructions_vblank
+.import screen_instructions_loop
 .import screen_main_menu_init
 .import screen_main_menu_destroy
 .import screen_main_menu_vblank
@@ -35,18 +39,29 @@
     hiscore_digits: .res 4
     current_score_digits: .res 4
     new_hiscore_flag: .res 1
+    ppu_update_addr: .res 2             ; start address of PPU update instruction stream
+
+    oam_offset: .res 1                  ; current OAM offset
 
     .export frame_counter, my_ppuctrl, my_scroll_x, my_scroll_y, skip_nmi
     .export SCRATCH, palette_addr, global_scroll_x, global_chr_bank
     .export gamepad_1, gamepad_2, hiscore_digits, current_score_digits
     .export gamepad_1_chg, gamepad_2_chg
     .export new_hiscore_flag
+    .export ppu_update_addr
+    .export oam_offset
 
 
 .segment "OAM"
     OAM: .res $100
 
     .export OAM
+
+.segment "BSS_NV"
+    nametbl1_attrs: .res 64
+    nametbl2_attrs: .res 64
+
+    .export nametbl1_attrs, nametbl2_attrs
 
 
 .segment "CODE"
@@ -128,6 +143,45 @@ nmi:
 irq:
     RTI
 
+update_ppu_from_rom:
+    LDY #0
+
+    ; update PPUCTRL to set PPUADDR increment
+    LDA my_ppuctrl
+    ORA (ppu_update_addr), Y
+    STA PPUCTRL
+
+    ; update PPU RAM (from ROM)
+    INY
+
+@ppu_loop:
+    LDA (ppu_update_addr), Y
+    BEQ @ppu_end                    ; if we read a block of length 0, end the loop
+    STA SCRATCH+0
+    INY
+
+    LDA (ppu_update_addr), Y
+    STA PPUADDR
+    INY
+    LDA (ppu_update_addr), Y
+    STA PPUADDR
+    INY
+
+@ppu_inner_loop:
+    LDA SCRATCH+0
+    BEQ @ppu_loop
+    LDA (ppu_update_addr), Y
+    STA PPUDATA
+    INY
+    DEC SCRATCH+0
+    JMP @ppu_inner_loop
+
+@ppu_end:
+    LDA #0
+    STA ppu_update_addr
+    STA ppu_update_addr+1
+    RTS
+
 vblank_handler:
     LDA #0
     STA OAMADDR
@@ -137,12 +191,19 @@ vblank_handler:
     LDA global_chr_bank
     STA CHR_PAGE
 
+    LDA ppu_update_addr+1           ; load hi byte of update instructions address
+    BEQ :+
+    JSR update_ppu_from_rom
+    JMP @ppu_ram_update_end
+
+:
     ; update PPUCTRL to set PPUADDR increment
     LDA my_ppuctrl
+    ORA PPU_UPD_BUF
     STA PPUCTRL
 
-    ; update PPU RAM
-    LDX #0
+    ; update PPU RAM (from RAM)
+    LDX #1
 @ppu_loop:
     LDA PPU_UPD_BUF, X
     BEQ @ppu_end                    ; if we read a block of length 0, end the loop
@@ -159,13 +220,17 @@ vblank_handler:
 @ppu_inner_loop:
     LDA SCRATCH+0
     BEQ @ppu_loop
-
-    LDA PP
-    
+    LDA PPU_UPD_BUF, X
+    STA PPUDATA
+    INX
     DEC SCRATCH+0
+    JMP @ppu_inner_loop
 
 @ppu_end:
+    LDA #0
+    STA PPU_UPD_BUF+1
 
+@ppu_ram_update_end:
     LDA #.hibyte(:+-1)
     PHA
     LDA #.lobyte(:+-1)
@@ -298,7 +363,8 @@ set_game_state:
     .addr :+-1
     .addr nop_sub                   ; STATE_NO_SCREEN
     .addr screen_main_menu_destroy  ; STATE_MAIN_MENU
-    .addr screen_transition_destroy  ; STATE_TRANSITION
+    .addr screen_transition_destroy ; STATE_TRANSITION
+    .addr screen_instructions_destroy ; STATE_INSTRUCTIONS
 :
 
     PLA
@@ -310,6 +376,7 @@ set_game_state:
     .addr nop_sub                   ; STATE_NO_SCREEN
     .addr screen_main_menu_init     ; STATE_MAIN_MENU
     .addr screen_transition_init    ; STATE_TRANSITION
+    .addr screen_instructions_init  ; STATE_INSTRUCTIONS
 :   
 
     ; set game_state_vblank func ptr to a new vblank handler
@@ -328,6 +395,10 @@ set_game_state:
 
 ; this routine busy waits for sprite-zero-hit
 wait_for_szh:
+    ; for timing debug
+    ;LDA #%00011111
+    ;STA PPUMASK
+
     ; wait for SZH flag to be cleared
     BIT PPUSTATUS
     BVS wait_for_szh
@@ -342,8 +413,9 @@ wait_for_szh:
 ; SCRATCH+1 - hi byte of metasprite def address
 ; SCRATCH+2 - X offset
 ; SCRATCH+3 - Y offset
-; X - OAM offset
+; oam_offset - OAM offset
 draw_metasprite:
+    LDX oam_offset
     LDY #0
 :   INY
     LDA (SCRATCH+0), Y
@@ -370,7 +442,8 @@ draw_metasprite:
     ADC #4
     TAX
     JMP :-
-:   RTS
+:   STX oam_offset
+    RTS
 
 .export draw_metasprite
 
@@ -378,25 +451,30 @@ draw_metasprite:
 ; Some lookup tables
 ; ==================
 
+.segment "RODATA"
 func_screen_vblank_lo:
     .byte .lobyte(screen0_vblank)                   ; STATE_NO_SCREEN
     .byte .lobyte(screen_main_menu_vblank)          ; STATE_MAIN_MENU
     .byte .lobyte(screen_transition_vblank)         ; STATE_TRANSITION
+    .byte .lobyte(screen_instructions_vblank)       ; STATE_INSTRUCTIONS
 
 func_screen_vblank_hi:
     .byte .hibyte(screen0_vblank)                   ; STATE_NO_SCREEN
     .byte .hibyte(screen_main_menu_vblank)          ; STATE_MAIN_MENU
     .byte .hibyte(screen_transition_vblank)         ; STATE_TRANSITION
+    .byte .hibyte(screen_instructions_vblank)       ; STATE_INSTRUCTIONS
 
 func_screen_loop_lo:
     .byte .lobyte(nop_sub)                          ; STATE_NO_SCREEN
     .byte .lobyte(screen_main_menu_loop)            ; STATE_MAIN_MENU
     .byte .lobyte(screen_transition_loop)           ; STATE_TRANSITION
+    .byte .lobyte(screen_instructions_loop)         ; STATE_TRANSITION
 
 func_screen_loop_hi:
     .byte .hibyte(nop_sub)                          ; STATE_NO_SCREEN
     .byte .hibyte(screen_main_menu_loop)            ; STATE_MAIN_MENU
     .byte .hibyte(screen_transition_loop)           ; STATE_TRANSITION
+    .byte .hibyte(screen_instructions_loop)         ; STATE_TRANSITION
 
 .export main, irq, nmi
 .export dynjmp, dynjsr

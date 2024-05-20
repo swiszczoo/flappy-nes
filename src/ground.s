@@ -5,9 +5,10 @@
     .import palette_addr
 
 
-.segment "CODE"
+.segment "TMCODE"
 
 ; this routine must be perfectly timed
+.align 256
 draw_ground:
     LDY #32
     LDA (palette_addr), Y
