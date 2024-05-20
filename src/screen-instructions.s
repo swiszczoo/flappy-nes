@@ -80,8 +80,15 @@ screen_instructions_init:
     LDA #$24
     STA sprite_pos_y+4
 
-    RTS
+    ; fill nametable attributes buffer with initial values
+    LDX #$3F
+:   LDA initial_attrs, X
+    STA nametbl1_attrs, X
+    STA nametbl2_attrs, X
+    DEX
+    BPL :-
 
+    RTS
 
 
 screen_instructions_destroy:
@@ -156,6 +163,11 @@ screen_instructions_loop:
 ; =============
 
 .segment "RODATA"
+initial_attrs:
+    .res 40, $55
+    .res 8, $A5
+    .res 16, $00
+
 get_ready_sprite:
     ;     Ypos Tile Attr Xpos
     .byte $00, $E7, $00, $D8    ; G

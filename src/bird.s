@@ -78,6 +78,10 @@ draw_bird:
 .export draw_bird
 
 
+;
+; Lookup tables
+; =============
+
 .segment "RODATA"
 bird_sprite_state_1:
     .byte 256-8, $44, $00, 256-8

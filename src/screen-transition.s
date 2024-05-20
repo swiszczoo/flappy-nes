@@ -57,14 +57,6 @@ screen_transition_init:
     LDA #$A8
     STA OAM+3
 
-    ; fill nametable attributes buffer
-    LDX #$3F
-:   LDA initial_attrs, X
-    STA nametbl1_attrs, X
-    STA nametbl2_attrs, X
-    DEX
-    BPL :-
-
     RTS
 
 screen_transition_destroy:
@@ -135,9 +127,3 @@ screen_transition_loop:
 .export screen_transition_vblank
 .export screen_transition_loop
 
-
-.segment "RODATA"
-initial_attrs:
-    .res 40, $55
-    .res 8, $A5
-    .res 16, $00
