@@ -253,6 +253,14 @@ screen_main_menu_vblank:
     CPY #32
     BMI :-
 
+    ; palette corruption workaround
+    LDA #$3F
+    STA PPUADDR
+    LDA #0
+    STA PPUADDR
+    STA PPUADDR
+    STA PPUADDR
+
 @no_palette_chg:
 
     RTS
@@ -535,7 +543,6 @@ bird_animation_y:
     .byte 98, 99
 
 screen_exit_stage_1:
-    .byte $00
     .byte 12, $20, $6A, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
     .byte 12, $20, $8A, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
     .byte 12, $20, $AA, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
@@ -545,14 +552,12 @@ screen_exit_stage_1:
     .byte $00
 
 screen_exit_stage_2:
-    .byte $00
     .byte 6, $20, $ED, $00, $00, $00, $00, $00, $00
     .byte 26, $22, $E3
     .res 26, $03
     .byte $00
 
 screen_exit_stage_3:
-    .byte $00
     .byte 12, $24, $6A, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
     .byte 12, $24, $8A, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
     .byte 12, $24, $AA, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
@@ -562,7 +567,6 @@ screen_exit_stage_3:
     .byte $00
 
 screen_exit_stage_4:
-    .byte $00
     .byte 6, $24, $ED, $00, $00, $00, $00, $00, $00
     .byte 26, $26, $E3
     .res 26, $03

@@ -25,10 +25,10 @@
     .import sprite_addr_lo, sprite_addr_hi, sprite_pos_x, sprite_pos_y
 
 
-.import draw_bird
 .import draw_ground
 .import draw_sprites_to_oam
 .import set_bird_data_for_first_sprite
+.import set_game_state
 .import update_bird
 .import wait_for_szh
 
@@ -80,6 +80,12 @@ screen_instructions_init:
     LDA #$24
     STA sprite_pos_y+4
 
+    ; disable sprites 5, 6, 7
+    LDA #0
+    STA sprite_addr_hi+5
+    STA sprite_addr_hi+6
+    STA sprite_addr_hi+7
+
     ; fill nametable attributes buffer with initial values
     LDX #$3F
 :   LDA initial_attrs, X
@@ -92,6 +98,16 @@ screen_instructions_init:
 
 
 screen_instructions_destroy:
+    ; disable all sprites except the bird
+    LDA #$00
+    STA sprite_addr_hi+1
+    STA sprite_addr_hi+2
+    STA sprite_addr_hi+3
+    STA sprite_addr_hi+4
+    STA sprite_addr_hi+5
+    STA sprite_addr_hi+6
+    STA sprite_addr_hi+7
+
     RTS
 
 screen_instructions_vblank:
@@ -106,6 +122,15 @@ screen_instructions_vblank:
     STA PPUADDR
     LDA #$21
     STA PPUDATA
+
+    ; palette corruption workaround
+    LDA #$3F
+    STA PPUADDR
+    LDA #0
+    STA PPUADDR
+    STA PPUADDR
+    STA PPUADDR
+
     RTS
 
 screen_instructions_loop:
@@ -146,6 +171,14 @@ screen_instructions_loop:
     STA sprite_addr_hi+3
 
 @no_animation_update:
+    ; check if A button is pressed
+    LDA gamepad_1_chg
+    AND BUTTON_A
+    BEQ @no_btn_press
+    LDA STATE_GAME
+    JSR set_game_state
+
+@no_btn_press:
     JSR draw_sprites_to_oam
     JSR wait_for_szh
     JSR draw_ground

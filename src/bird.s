@@ -9,12 +9,20 @@
     bird_animation_frames_left: .res 1
     bird_animation_state: .res 1
     bird_animation_speed: .res 1
+    bird_physics_active: .res 1             ; 0xFF if physics active
     
     .import sprite_addr_lo, sprite_addr_hi, sprite_pos_x, sprite_pos_y
-    .export bird_pos_x, bird_pos_y, bird_animation_speed
+    .export bird_pos_x, bird_pos_y, bird_animation_speed, bird_animation_frames_left, bird_physics_active, bird_velocity
 
 
 .import draw_metasprite
+
+; Physics constants
+GRAVITY = $0035
+MAX_VERTICAL_SPEED = $0420
+MIN_VERTICAL_SPEED = -(MAX_VERTICAL_SPEED + GRAVITY)
+FLAP_BOOST = -($05C5)
+MIN_Y_POS = $1200
     
 .segment "CODE"
 reset_bird:
@@ -25,11 +33,72 @@ reset_bird:
     STA bird_velocity
     STA bird_animation_state
     STA bird_pos_y+1
+    STA bird_physics_active
     RTS
 
 .export reset_bird
 
 update_bird:
+    LDA bird_physics_active
+    BEQ @no_physics
+
+    ; first, apply vertical velocity to current bird Y position
+    ; cap at min_y_pos
+    CLC
+    LDA bird_pos_y+1
+    ADC bird_velocity+1
+    STA bird_pos_y+1
+    LDA bird_pos_y+0
+    ADC bird_velocity+0
+    STA bird_pos_y+0
+    
+    ; compare to minimum allowed falling speed
+    LDA bird_pos_y+0
+    CMP #.hibyte(MIN_Y_POS)
+    BCC @cap_pos
+    BNE @no_cap_pos
+    LDA #.lobyte(MIN_Y_POS)
+    CMP bird_pos_y+1
+    BCS @cap_pos
+    JMP @no_cap_pos
+
+@cap_pos:
+    LDA #.hibyte(MIN_Y_POS)
+    STA bird_pos_y+0
+    LDA #.lobyte(MIN_Y_POS)
+    STA bird_pos_y+1
+    ; reset velocity
+    LDA #0
+    STA bird_velocity+0
+    STA bird_velocity+1
+
+@no_cap_pos:
+    ; then, apply gravity to velocity, capping at maximum vertical velocity
+    CLC
+    LDA bird_velocity+1
+    ADC #.lobyte(GRAVITY)
+    STA bird_velocity+1
+    LDA bird_velocity+0
+    ADC #.hibyte(GRAVITY)
+    STA bird_velocity+0
+
+    ; compare to maximum allowed falling speed
+    LDA #.hibyte(MAX_VERTICAL_SPEED)
+    CMP bird_velocity+0
+    BMI @cap_velocity
+    BNE @no_physics
+    LDA bird_velocity+1
+    CMP #.lobyte(MAX_VERTICAL_SPEED)
+    BPL @cap_velocity
+    JMP @no_physics
+
+@cap_velocity:
+    LDA #.hibyte(MAX_VERTICAL_SPEED)
+    STA bird_velocity+0
+    LDA #.lobyte(MAX_VERTICAL_SPEED)
+    STA bird_velocity+1
+
+@no_physics:
     LDA bird_animation_frames_left
     BNE :+
     INC bird_animation_state
@@ -44,6 +113,42 @@ update_bird:
 :   RTS
 
 .export update_bird
+
+bird_do_flap:
+    ; do nothing if physics disabled
+    LDA bird_physics_active
+    BEQ @exit
+
+    ; add flap boost to current vertical velocity, capping at minimum speed
+    ; (moving upwards is denoted by negative speed)
+    CLC
+    LDA bird_velocity+1
+    ADC #.lobyte(FLAP_BOOST)
+    STA bird_velocity+1
+    LDA bird_velocity+0
+    ADC #.hibyte(FLAP_BOOST)
+    STA bird_velocity+0
+
+    ; compare to minimum allowed falling speed
+    LDA bird_velocity+0
+    CMP #.hibyte(MIN_VERTICAL_SPEED)
+    BMI @cap_velocity
+    BNE @exit
+    LDA #.lobyte(MIN_VERTICAL_SPEED)
+    CMP bird_velocity+1
+    BPL @cap_velocity
+    JMP @exit
+
+@cap_velocity:
+    LDA #.hibyte(MIN_VERTICAL_SPEED)
+    STA bird_velocity+0
+    LDA #.lobyte(MIN_VERTICAL_SPEED)
+    STA bird_velocity+1
+
+@exit:
+    RTS
+
+.export bird_do_flap
 
 set_bird_data_for_first_sprite:
     LDX bird_animation_state

@@ -2,4 +2,5 @@
 .define STATE_MAIN_MENU         #1
 .define STATE_GAME_TRANSITION   #2
 .define STATE_INSTRUCTIONS      #3
-
+.define STATE_GAME              #4
+.define STATE_GAME_OVER         #5

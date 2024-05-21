@@ -74,6 +74,15 @@ screen_transition_vblank:
     STA PPUADDR
     LDA #$21
     STA PPUDATA
+    
+    ; palette corruption workaround
+    LDA #$3F
+    STA PPUADDR
+    LDA #0
+    STA PPUADDR
+    STA PPUADDR
+    STA PPUADDR
+
     RTS
 
 screen_transition_loop:

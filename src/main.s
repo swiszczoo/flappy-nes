@@ -2,6 +2,10 @@
 .include "registers.inc"
 
 ; screen imports
+.import screen_game_init
+.import screen_game_destroy
+.import screen_game_vblank
+.import screen_game_loop
 .import screen_instructions_init
 .import screen_instructions_destroy
 .import screen_instructions_vblank
@@ -96,7 +100,7 @@ main:
     STA game_state
 
     ; first, init PPU palettes to pure black ($0f)
-    LDA #$3f
+    LDA #$3F
     STA PPUADDR
     LDA #$00
     STA PPUADDR
@@ -105,6 +109,14 @@ main:
 :   STA PPUDATA
     DEX
     BPL :-
+
+    ; palette corruption workaround
+    LDA #$3F
+    STA PPUADDR
+    LDA #0
+    STA PPUADDR
+    STA PPUADDR
+    STA PPUADDR
 
     ; then, set some reasonable PPU settings
     LDA #%10001000
@@ -144,21 +156,27 @@ irq:
     RTI
 
 update_ppu_from_rom:
+    ; update PPU RAM (from ROM)
     LDY #0
 
-    ; update PPUCTRL to set PPUADDR increment
-    LDA my_ppuctrl
-    ORA (ppu_update_addr), Y
-    STA PPUCTRL
-
-    ; update PPU RAM (from ROM)
-    INY
-
 @ppu_loop:
+    LDX #0
     LDA (ppu_update_addr), Y
     BEQ @ppu_end                    ; if we read a block of length 0, end the loop
     STA SCRATCH+0
+
+    ; update PPUCTRL to set PPUADDR increment (32 if first bit of length was set)
+    BPL @ppu_increment_horizontal
+    LDX #$04                        ; set increment mode to vertical
+@ppu_increment_horizontal:
+    TXA
+    ORA my_ppuctrl
+    STA PPUCTRL
     INY
+
+    ;LDA SCRATCH+0
+    ;AND #$7F                        ; ignore MSB of length
+    ;STA SCRATCH+0
 
     LDA (ppu_update_addr), Y
     STA PPUADDR
@@ -183,8 +201,6 @@ update_ppu_from_rom:
     RTS
 
 vblank_handler:
-    LDA #0
-    STA OAMADDR
     LDA #.hibyte(OAM)
     STA OAMDMA                      ; copy sprites data to OAM using DMA
 
@@ -196,19 +212,26 @@ vblank_handler:
     JSR update_ppu_from_rom
     JMP @ppu_ram_update_end
 
-:
-    ; update PPUCTRL to set PPUADDR increment
-    LDA my_ppuctrl
-    ORA PPU_UPD_BUF
-    STA PPUCTRL
-
-    ; update PPU RAM (from RAM)
-    LDX #1
+:   ; update PPU RAM (from RAM)
+    LDX #0
 @ppu_loop:
+    LDY #0                          ; set increment mode to horizontal
     LDA PPU_UPD_BUF, X
     BEQ @ppu_end                    ; if we read a block of length 0, end the loop
     STA SCRATCH+0
+
+    ; update PPUCTRL to set PPUADDR increment (32 if first bit of length was set)
+    BPL @ppu_increment_horizontal
+    LDY #$04                        ; set increment mode to vertical
+@ppu_increment_horizontal:
+    TYA
+    ORA my_ppuctrl
+    STA PPUCTRL
     INX
+
+    LDA SCRATCH+0
+    AND #$7F                        ; ignore MSB of length
+    STA SCRATCH+0
 
     LDA PPU_UPD_BUF, X
     STA PPUADDR
@@ -218,7 +241,7 @@ vblank_handler:
     INX
 
 @ppu_inner_loop:
-    LDA SCRATCH+0
+    LDA SCRATCH+0                
     BEQ @ppu_loop
     LDA PPU_UPD_BUF, X
     STA PPUDATA
@@ -358,6 +381,7 @@ dynjsr:
 set_game_state:
     PHA
 
+    LDA game_state
     JSR dynjsr
     ; screen destroy routine table
     .addr :+-1
@@ -365,6 +389,7 @@ set_game_state:
     .addr screen_main_menu_destroy  ; STATE_MAIN_MENU
     .addr screen_transition_destroy ; STATE_TRANSITION
     .addr screen_instructions_destroy ; STATE_INSTRUCTIONS
+    .addr screen_game_destroy       ; STATE_GAME
 :
 
     PLA
@@ -377,6 +402,7 @@ set_game_state:
     .addr screen_main_menu_init     ; STATE_MAIN_MENU
     .addr screen_transition_init    ; STATE_TRANSITION
     .addr screen_instructions_init  ; STATE_INSTRUCTIONS
+    .addr screen_game_init          ; STATE_GAME
 :   
 
     ; set game_state_vblank func ptr to a new vblank handler
@@ -457,24 +483,28 @@ func_screen_vblank_lo:
     .byte .lobyte(screen_main_menu_vblank)          ; STATE_MAIN_MENU
     .byte .lobyte(screen_transition_vblank)         ; STATE_TRANSITION
     .byte .lobyte(screen_instructions_vblank)       ; STATE_INSTRUCTIONS
+    .byte .lobyte(screen_game_vblank)               ; STATE_GAME
 
 func_screen_vblank_hi:
     .byte .hibyte(screen0_vblank)                   ; STATE_NO_SCREEN
     .byte .hibyte(screen_main_menu_vblank)          ; STATE_MAIN_MENU
     .byte .hibyte(screen_transition_vblank)         ; STATE_TRANSITION
     .byte .hibyte(screen_instructions_vblank)       ; STATE_INSTRUCTIONS
+    .byte .hibyte(screen_game_vblank)               ; STATE_GAME
 
 func_screen_loop_lo:
     .byte .lobyte(nop_sub)                          ; STATE_NO_SCREEN
     .byte .lobyte(screen_main_menu_loop)            ; STATE_MAIN_MENU
     .byte .lobyte(screen_transition_loop)           ; STATE_TRANSITION
-    .byte .lobyte(screen_instructions_loop)         ; STATE_TRANSITION
+    .byte .lobyte(screen_instructions_loop)         ; STATE_INSTRUCTIONS
+    .byte .lobyte(screen_game_loop)                 ; STATE_GAME
 
 func_screen_loop_hi:
     .byte .hibyte(nop_sub)                          ; STATE_NO_SCREEN
     .byte .hibyte(screen_main_menu_loop)            ; STATE_MAIN_MENU
     .byte .hibyte(screen_transition_loop)           ; STATE_TRANSITION
-    .byte .hibyte(screen_instructions_loop)         ; STATE_TRANSITION
+    .byte .hibyte(screen_instructions_loop)         ; STATE_INSTRUCTIONS
+    .byte .hibyte(screen_game_loop)                 ; STATE_GAME
 
 .export main, irq, nmi
 .export dynjmp, dynjsr

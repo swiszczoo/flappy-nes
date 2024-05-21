@@ -75,6 +75,21 @@ draw_ground:
     STA PPUDATA
     STX PPUADDR
     STY PPUADDR
+
+    ; waste some time
+    LDX #$7B
+:   NOP
+    NOP
+    NOP
+    DEX
+    BNE :-
+    NOP
+    NOP
+    
+    ; we need to enable sprite rendering for at least one scanline
+    ; to fix OAM corruption
+    LDA #%00010000
+    STA PPUMASK
     RTS
 
 .export draw_ground
