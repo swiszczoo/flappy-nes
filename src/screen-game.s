@@ -28,6 +28,8 @@
 .import bird_do_flap
 .import draw_ground
 .import draw_sprites_to_oam
+.import random_next
+.import random_seed
 .import set_bird_data_for_first_sprite
 .import update_bird
 .import wait_for_szh
@@ -38,6 +40,13 @@ screen_game_init:
     LDA #$FF
     STA bird_physics_active
     JSR bird_do_flap
+
+    LDX frame_counter+0
+    LDY frame_counter+1
+    JSR random_seed
+
+    JSR random_next
+    JSR random_next
     
     RTS
 

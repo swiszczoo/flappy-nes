@@ -18,10 +18,10 @@
 .import draw_metasprite
 
 ; Physics constants
-GRAVITY = $0035
+GRAVITY = $0024
 MAX_VERTICAL_SPEED = $0420
 MIN_VERTICAL_SPEED = -(MAX_VERTICAL_SPEED + GRAVITY)
-FLAP_BOOST = -($05C5)
+FLAP_BOOST = -($02A6)
 MIN_Y_POS = $1200
     
 .segment "CODE"
@@ -122,11 +122,9 @@ bird_do_flap:
     ; add flap boost to current vertical velocity, capping at minimum speed
     ; (moving upwards is denoted by negative speed)
     CLC
-    LDA bird_velocity+1
-    ADC #.lobyte(FLAP_BOOST)
+    LDA #.lobyte(FLAP_BOOST)
     STA bird_velocity+1
-    LDA bird_velocity+0
-    ADC #.hibyte(FLAP_BOOST)
+    LDA #.hibyte(FLAP_BOOST)
     STA bird_velocity+0
 
     ; compare to minimum allowed falling speed
