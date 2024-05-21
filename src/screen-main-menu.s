@@ -120,6 +120,10 @@ screen_main_menu_init:
     CPX #(jumping_text_oam_end - jumping_text_oam)
     BCC :-
 
+    ; fix some glitchy mess appearing on the screen
+    LDA #$00
+    STA OAM+181
+
     ; create sprites for top score
     LDA #.lobyte(hiscore_digits)
     STA SCRATCH+0
