@@ -15,4 +15,4 @@ target_compile_options(${PROJECT_NAME} PUBLIC -t nes)
 target_compile_options(${PROJECT_NAME} PRIVATE --asm-include-dir "${CMAKE_SOURCE_DIR}/inc"
                                             --bin-include-dir "${CMAKE_SOURCE_DIR}/data")
 target_link_options(${PROJECT_NAME} PUBLIC -t nes --config ${CMAKE_SOURCE_DIR}/rom.cfg)
-set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "flappy_bird (US).nes")
+set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "flappy_bird (USA).nes")

@@ -203,14 +203,14 @@ initial_attrs:
 
 get_ready_sprite:
     ;     Ypos Tile Attr Xpos
-    .byte $00, $E7, $00, $D8    ; G
-    .byte $00, $E5, $00, $E0    ; E
-    .byte $00, $F4, $00, $E8    ; T
-    .byte $00, $F2, $00, $00    ; R
-    .byte $00, $E5, $00, $08    ; E
-    .byte $00, $E1, $00, $10    ; A
-    .byte $00, $E4, $00, $18    ; D
-    .byte $00, $F9, $00, $20    ; Y
+    .byte $00, $E7, $02, $D8    ; G
+    .byte $00, $E5, $02, $E0    ; E
+    .byte $00, $F4, $02, $E8    ; T
+    .byte $00, $F2, $02, $00    ; R
+    .byte $00, $E5, $02, $08    ; E
+    .byte $00, $E1, $02, $10    ; A
+    .byte $00, $E4, $02, $18    ; D
+    .byte $00, $F9, $02, $20    ; Y
     .byte 0,   0,   0,   0      ; sprite end
 
 help_sprite:
