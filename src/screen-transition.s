@@ -41,9 +41,9 @@ screen_transition_init:
     STA global_chr_bank
 
 
-    ; remove all sprites above slot 32
+    ; remove all sprites above slot 12
     LDA #$FF
-    LDX #$80
+    LDX #(12*4)
 :   STA OAM, X
     INX
     INX

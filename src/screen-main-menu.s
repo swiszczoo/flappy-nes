@@ -17,7 +17,8 @@
     .import palette_addr
     .import frame_counter, my_ppuctrl, my_scroll_x, my_scroll_y
     .import skip_nmi, global_scroll_x, global_chr_bank
-    .import hiscore_digits
+    .import game_level
+    .import easy_hiscore_digits, medium_hiscore_digits, hard_hiscore_digits
     .import gamepad_1_chg
     .import ppu_update_addr
     .import oam_offset
@@ -124,10 +125,47 @@ screen_main_menu_init:
     LDA #$00
     STA OAM+181
 
+    ; draw top score
+    JSR draw_score_sprites
+
+    ; reset bird
+    JSR reset_bird
+
+    ; draw level sprite
+    JSR draw_level_sprite
+
+    ; enable NMI
+    LDA #0
+    STA skip_nmi
+
+    ; enable rendering on next vblank
+    LDA #%00011110
+    STA my_ppumask
+
+    RTS
+
+screen_main_menu_destroy:
+    ; remove all unnecessary sprites from the screen
+
+    RTS
+
+draw_score_sprites:
+    ; clear sprite slots 48-63
+    LDA #(48*4)
+    LDY #$FF
+    CLC
+:   TAX
+    TYA
+    STA OAM, X
+    TXA
+    ADC #4
+    BCC :-
+
     ; create sprites for top score
-    LDA #.lobyte(hiscore_digits)
+    LDX game_level
+    LDA hiscore_addr_lo, X
     STA SCRATCH+0
-    LDA #.hibyte(hiscore_digits)
+    LDA hiscore_addr_hi, X
     STA SCRATCH+1
     LDA #4
     STA SCRATCH+2
@@ -209,23 +247,24 @@ screen_main_menu_init:
     DEC SCRATCH+2
     BNE @topscore_loop
 
-    ; reset bird
-    JSR reset_bird
-
-    ; enable NMI
-    LDA #0
-    STA skip_nmi
-
-    ; enable rendering on next vblank
-    LDA #%00011110
-    STA my_ppumask
-
     RTS
 
-screen_main_menu_destroy:
-    ; remove all unnecessary sprites from the screen
-
-    RTS
+draw_level_sprite:
+    LDA #$FF
+    STA OAM+72                  ; clear some sprite if the previous level was MEDIUM
+    STA OAM+76                  ; which is 2 characters longer than EASY and HARD
+    LDX game_level
+    LDA level_sprites_lo, X
+    STA SCRATCH+0
+    LDA level_sprites_hi, X
+    STA SCRATCH+1
+    LDA #$80
+    STA SCRATCH+2
+    LDA #$74
+    STA SCRATCH+3
+    LDA #$30
+    STA oam_offset
+    JMP draw_metasprite
 
 screen_main_menu_vblank:
     LDA my_ppumask
@@ -324,12 +363,26 @@ screen_main_menu_loop:
     ; check if A button is pressed in this frame
     LDA prev_palette
     CMP #3
-    BCC @no_button_press
+    BCC @no_a_press
     LDA gamepad_1_chg
     AND BUTTON_A
-    BEQ @no_button_press
+    BEQ @no_a_press
 
     JSR start_game
+
+@no_a_press:
+    LDA gamepad_1_chg
+    AND BUTTON_LEFT
+    BEQ @no_left_press
+    JSR left_pressed
+
+@no_left_press:
+    LDA gamepad_1_chg
+    AND #%00100001                  ; RIGHT or SELECT
+    BEQ @no_right_press
+    JSR right_pressed
+
+@no_right_press:
     JMP @no_button_press
 
 @screen_exiting:
@@ -450,6 +503,27 @@ start_game:
     STA menu_exit_stage
     RTS
 
+left_pressed:
+    DEC game_level
+    LDA game_level
+    BPL :+
+    LDA #2
+    STA game_level
+
+:   JSR draw_score_sprites
+    JMP draw_level_sprite
+
+right_pressed:
+    INC game_level
+    LDA game_level
+    CMP #3
+    BCC :+
+    LDA #0
+    STA game_level
+
+:   JSR draw_score_sprites
+    JMP draw_level_sprite
+
 next_screen:
     LDA STATE_GAME_TRANSITION
     JMP set_game_state
@@ -515,19 +589,19 @@ menu_palettes_hi:
 
 jumping_text_oam:
     ;     Ypos Tile Attr Xpos
-    .byte $78, $F0, $02, $61
-    .byte $78, $F2, $02, $6A
-    .byte $78, $E5, $02, $73
-    .byte $78, $F3, $02, $7C
-    .byte $78, $F3, $02, $84
-    .byte $78, $CF, $02, $97
-    .byte $86, $F4, $02, $5D
-    .byte $86, $EF, $02, $65
-    .byte $86, $F3, $02, $79
-    .byte $86, $F4, $02, $82
-    .byte $86, $E1, $02, $8A
-    .byte $86, $F2, $02, $93
-    .byte $86, $F4, $02, $9C
+    .byte $88, $F0, $02, $61
+    .byte $88, $F2, $02, $6A
+    .byte $88, $E5, $02, $73
+    .byte $88, $F3, $02, $7C
+    .byte $88, $F3, $02, $85
+    .byte $88, $CF, $02, $97
+    .byte $96, $F4, $02, $5D
+    .byte $96, $EF, $02, $65
+    .byte $96, $F3, $02, $79
+    .byte $96, $F4, $02, $82
+    .byte $96, $E1, $02, $8A
+    .byte $96, $F2, $02, $93
+    .byte $96, $F4, $02, $9C
 jumping_text_oam_end:
 
 jumping_text_y_offset:
@@ -587,6 +661,58 @@ screen_exit_stages_hi:
     .byte .hibyte(screen_exit_stage_2)
     .byte .hibyte(screen_exit_stage_3)
     .byte .hibyte(screen_exit_stage_4)
+
+level_easy_sprite:
+    ;     Ypos Tile Attr Xpos
+    .byte $00, $BE, $02, $D8            ; <
+    .byte $00, $E5, $02, $EE            ; E
+    .byte $00, $E1, $02, $F7            ; A
+    .byte $00, $F3, $02, $00            ; S
+    .byte $00, $F9, $02, $09            ; Y
+    .byte $00, $BF, $02, $1F            ; >
+    .byte 0,   0,   0,   0              ; sprite end
+
+level_medium_sprite:
+    ;     Ypos Tile Attr Xpos
+    .byte $00, $BE, $02, $D8            ; <
+    .byte $00, $ED, $02, $E5            ; M
+    .byte $00, $E5, $02, $EE            ; E
+    .byte $00, $E4, $02, $F7            ; D
+    .byte $00, $E9, $02, $00            ; I
+    .byte $00, $F5, $02, $09            ; U
+    .byte $00, $ED, $02, $12            ; M
+    .byte $00, $BF, $02, $1F            ; >
+    .byte 0,   0,   0,   0              ; sprite end
+
+level_hard_sprite:
+    ;     Ypos Tile Attr Xpos
+    .byte $00, $BE, $02, $D8            ; <
+    .byte $00, $E8, $02, $EE            ; H
+    .byte $00, $E1, $02, $F7            ; A
+    .byte $00, $F2, $02, $00            ; R
+    .byte $00, $E4, $02, $09            ; D
+    .byte $00, $BF, $02, $1F            ; >
+    .byte 0,   0,   0,   0              ; sprite end
+
+level_sprites_lo:
+    .byte .lobyte(level_easy_sprite)
+    .byte .lobyte(level_medium_sprite)
+    .byte .lobyte(level_hard_sprite)
+
+level_sprites_hi:
+    .byte .hibyte(level_easy_sprite)
+    .byte .hibyte(level_medium_sprite)
+    .byte .hibyte(level_hard_sprite)
+
+hiscore_addr_lo:
+    .byte .lobyte(easy_hiscore_digits)
+    .byte .lobyte(medium_hiscore_digits)
+    .byte .lobyte(hard_hiscore_digits)
+    
+hiscore_addr_hi:
+    .byte .hibyte(easy_hiscore_digits)
+    .byte .hibyte(medium_hiscore_digits)
+    .byte .hibyte(hard_hiscore_digits)
 
 .export screen_main_menu_init
 .export screen_main_menu_destroy

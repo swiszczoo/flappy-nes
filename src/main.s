@@ -40,7 +40,11 @@
     gamepad_1_chg: .res 1
     gamepad_2_chg: .res 1
 
-    hiscore_digits: .res 4
+    game_level: .res 1
+    easy_hiscore_digits: .res 4
+    medium_hiscore_digits: .res 4
+    hard_hiscore_digits: .res 4
+
     current_score_digits: .res 4
     new_hiscore_flag: .res 1
     ppu_update_addr: .res 2             ; start address of PPU update instruction stream
@@ -49,7 +53,9 @@
 
     .export frame_counter, my_ppuctrl, my_scroll_x, my_scroll_y, skip_nmi
     .export SCRATCH, palette_addr, global_scroll_x, global_chr_bank
-    .export gamepad_1, gamepad_2, hiscore_digits, current_score_digits
+    .export gamepad_1, gamepad_2, game_level
+    .export easy_hiscore_digits, medium_hiscore_digits, hard_hiscore_digits 
+    .export current_score_digits
     .export gamepad_1_chg, gamepad_2_chg
     .export new_hiscore_flag
     .export ppu_update_addr
