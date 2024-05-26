@@ -54,10 +54,27 @@ draw_sprites_to_oam:
     JMP @draw_loop
 
 @exit_loop:
+    LDX first_sprite
+    LDA sprite_addr_hi, X
+    STX SCRATCH+12
+    STA SCRATCH+13                  ; temporarily exchange sprite_addr_hi for at least one sprite
+                                    ; to prevent endless looping
+    LDA #$FF
+    STA sprite_addr_hi, X
+
+@next_sprite_loop:
     DEC first_sprite                ; on the next call another sprite will have priority
     LDA first_sprite
     AND #(SPRITE_COUNT - 1)
     STA first_sprite
+    LDX first_sprite
+    LDA sprite_addr_hi, X
+    BEQ @next_sprite_loop           ; if this sprite is inactive, repeat
+
+    ; restore previously changed address
+    LDX SCRATCH+12
+    LDA SCRATCH+13
+    STA sprite_addr_hi, X
     
     ; now, remove all unused sprites by setting their Y position to #$FF
     LDA oam_offset
