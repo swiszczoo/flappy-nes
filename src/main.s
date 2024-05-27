@@ -26,6 +26,7 @@
     wait_for_vblank: .res 1 ; 0xFF if waiting for vblank
     skip_nmi: .res 1        ; 0xFF to skip NMI
     my_ppuctrl: .res 1
+    my_coarse_scroll_x: .res 1
     my_scroll_x: .res 1
     my_scroll_y: .res 1
     frame_counter: .res 2
@@ -51,7 +52,7 @@
 
     oam_offset: .res 1                  ; current OAM offset
 
-    .export frame_counter, my_ppuctrl, my_scroll_x, my_scroll_y, skip_nmi
+    .export frame_counter, my_ppuctrl, my_coarse_scroll_x, my_scroll_x, my_scroll_y, skip_nmi
     .export SCRATCH, palette_addr, global_scroll_x, global_chr_bank
     .export gamepad_1, gamepad_2, game_level
     .export easy_hiscore_digits, medium_hiscore_digits, hard_hiscore_digits 
@@ -133,7 +134,9 @@ main:
     STA OAMADDR
 
     ; set PPUCTRL and PPUSCROLL
-    LDA my_ppuctrl
+    LDA my_coarse_scroll_x
+    AND #1
+    ORA my_ppuctrl
     STA PPUCTRL
     BIT PPUSTATUS
     LDA my_scroll_x
@@ -257,7 +260,7 @@ vblank_handler:
 
 @ppu_end:
     LDA #0
-    STA PPU_UPD_BUF+1
+    STA PPU_UPD_BUF
 
 @ppu_ram_update_end:
     LDA #.hibyte(:+-1)
@@ -267,7 +270,9 @@ vblank_handler:
     JMP (game_state_vblank_addr)    ; indirectly call vblank handler for current screen
 :
     ; set PPUCTRL and PPUSCROLL
-    LDA my_ppuctrl
+    LDA my_coarse_scroll_x
+    AND #1
+    ORA my_ppuctrl
     STA PPUCTRL
     BIT PPUSTATUS
     LDA my_scroll_x
