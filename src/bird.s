@@ -232,3 +232,11 @@ bird_sprite_states_hi:
 bird_sprite_animation:
     .byte $00, $00, $01, $02, $02, $01
 bird_sprite_animation_end:
+
+bird_collision_top:
+   .byte 256-3, 256-4, 256-4, 256-5, 256-6, 256-6, 256-7, 256-7, 256-7, 256-7, 256-7, 256-7, 256-6, 256-5, 256-4, 256-1, 0
+
+bird_collision_bottom:
+    .byte 256-1, 0, 2, 3, 3, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 2, 0
+
+.export bird_collision_top, bird_collision_bottom

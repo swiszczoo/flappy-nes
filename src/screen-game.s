@@ -27,6 +27,9 @@
     pipe_last_write_ptr: .res 1
     pipes_next_column: .res 1
     palette_buffer: .res 6
+    is_colliding: .res 1
+    distance_to_pipe_start: .res 1
+    distance_to_pipe: .res 1
 
     .import nametbl1_attrs, nametbl2_attrs
     .import bird_pos_x, bird_pos_y, bird_physics_active, bird_animation_speed, bird_animation_frames_left, bird_velocity
@@ -75,6 +78,10 @@ screen_game_init:
     STA pipe_write_ptr
     STA pipe_last_write_ptr
     STA pipes_next_column
+    STA is_colliding
+
+    LDA #$FF
+    STA distance_to_pipe
 
     LDA my_scroll_x
     CLC
@@ -86,7 +93,6 @@ screen_game_init:
     LDA #9
     STA pipes_next_column
 @no_mapgen_alignment:
-    
     RTS
 
 screen_game_destroy:
@@ -175,6 +181,7 @@ screen_game_loop:
 :
     JSR process_map_gen
     JSR update_bird
+    JSR process_collisions
     JSR set_bird_data_for_first_sprite
     JSR draw_score
 
@@ -250,6 +257,17 @@ draw_score:
     RTS
 
 process_map_gen:
+    LDA distance_to_pipe_start
+    BEQ @no_distance_to_pipe_start
+
+    DEC distance_to_pipe_start
+    BEQ @no_distance_to_pipe_start
+
+    ; we've just reached 0
+    LDA #$FE
+    STA distance_to_pipe
+
+@no_distance_to_pipe_start:
     LDA my_scroll_x
     SEC
     SBC last_processed_scroll_x
@@ -258,9 +276,22 @@ process_map_gen:
     RTS
 
 @process:
-    ; increment last processed column by 8 (carry is set here)
+    ; check if that's our first generated pipe
+    LDA distance_to_pipe
+    CMP #$FF
+    BNE @not_first_pipe
+
+    LDA pipes_next_column
+    BNE @not_first_pipe
+
+    LDA #(LOAD_SEAM_OFFSET + 6)
+    STA distance_to_pipe_start
+
+@not_first_pipe:
+    ; increment last processed column by 8
     LDA last_processed_scroll_x
-    ADC #7              ; 7 + CARRY = 8
+    CLC
+    ADC #8              ; 7 + CARRY = 8
     STA last_processed_scroll_x
 
     ; we are generating a new column
@@ -571,6 +602,22 @@ generate_next_pipe:
     TXA
     AND #7
     STA pipe_write_ptr
+    RTS
+
+process_collisions_exit:
+    RTS
+
+process_collisions:
+    LDA distance_to_pipe
+    CMP #$FF
+    BEQ process_collisions_exit ; do not process anything if it's set to FF
+
+    DEC distance_to_pipe
+    BNE @no_reset
+
+    LDA #80
+    STA distance_to_pipe
+@no_reset:
     RTS
 
 ;
