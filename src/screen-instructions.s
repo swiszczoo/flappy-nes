@@ -10,6 +10,7 @@
     .import hiscore_digits
     .import gamepad_1_chg
     .import oam_offset
+    .import new_hiscore_flag
 
 
 .segment "OAM"
@@ -38,6 +39,7 @@ screen_instructions_init:
     ; set animation state
     LDA #0
     STA a_btn_animation_state
+    STA new_hiscore_flag
 
     ; set sprites
     ; GET READY text

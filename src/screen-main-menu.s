@@ -18,7 +18,7 @@
     .import frame_counter, my_ppuctrl, my_scroll_x, my_scroll_y
     .import skip_nmi, global_scroll_x, global_chr_bank
     .import game_level
-    .import easy_hiscore_digits, medium_hiscore_digits, hard_hiscore_digits
+    .import easy_hiscore_digits, medium_hiscore_digits, hard_hiscore_digits     ; must be adjacent and in this order
     .import gamepad_1_chg
     .import ppu_update_addr
     .import oam_offset

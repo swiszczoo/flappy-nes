@@ -3,6 +3,7 @@
 
 
 .segment "BSS"
+    bird_dead: .res 1
     bird_pos_x: .res 1
     bird_pos_y: .res 2
     bird_velocity: .res 2
@@ -12,7 +13,7 @@
     bird_physics_active: .res 1             ; 0xFF if physics active
     
     .import sprite_addr_lo, sprite_addr_hi, sprite_pos_x, sprite_pos_y
-    .export bird_pos_x, bird_pos_y, bird_animation_speed, bird_animation_frames_left, bird_physics_active, bird_velocity
+    .export bird_dead, bird_pos_x, bird_pos_y, bird_animation_speed, bird_animation_frames_left, bird_physics_active, bird_velocity
 
 
 .import draw_metasprite
@@ -34,6 +35,7 @@ reset_bird:
     STA bird_animation_state
     STA bird_pos_y+1
     STA bird_physics_active
+    STA bird_dead
     RTS
 
 .export reset_bird
@@ -99,6 +101,9 @@ update_bird:
     STA bird_velocity+1
 
 @no_physics:
+    LDA bird_dead
+    BNE @no_animation
+
     LDA bird_animation_frames_left
     BNE :+
     INC bird_animation_state
@@ -110,7 +115,12 @@ update_bird:
     BCC :+
     LDA #0
     STA bird_animation_state
-:   RTS
+:   JMP @exit
+@no_animation:
+    LDA #(bird_sprite_animation_end - bird_sprite_animation)
+    STA bird_animation_state
+@exit:
+    RTS
 
 .export update_bird
 
@@ -219,19 +229,33 @@ bird_sprite_state_3:
     .byte 0, $79, $01, 0
     .byte 0, 0, 0, 0
 
+bird_sprite_state_4:                ; dead state
+    .byte 256-8, $4A, $00, 256-8
+    .byte 0, $5A, $00, 256-8
+    .byte 256-8, $4B, $00, 0
+    .byte 0, $5B, $00, 0
+    .byte 8, $01, $00, 0
+    .byte 0, $7A, $01, 256-8
+    .byte 256-8, $6B, $01, 0
+    .byte 0, $7B, $01, 0
+    .byte 0, 0, 0, 0
+
 bird_sprite_states_lo:
     .byte .lobyte(bird_sprite_state_1)
     .byte .lobyte(bird_sprite_state_2)
     .byte .lobyte(bird_sprite_state_3)
+    .byte .lobyte(bird_sprite_state_4)
     
 bird_sprite_states_hi:
     .byte .hibyte(bird_sprite_state_1)
     .byte .hibyte(bird_sprite_state_2)
     .byte .hibyte(bird_sprite_state_3)
+    .byte .hibyte(bird_sprite_state_4)
 
 bird_sprite_animation:
     .byte $00, $00, $01, $02, $02, $01
 bird_sprite_animation_end:
+    .byte $03
 
 bird_collision_top:
    .byte 256-3, 256-4, 256-4, 256-5, 256-6, 256-6, 256-7, 256-7, 256-7, 256-7, 256-7, 256-7, 256-6, 256-5, 256-4, 256-1, 0

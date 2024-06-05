@@ -11,7 +11,9 @@
     .import oam_offset
 
     .import current_score_digits
+    .import easy_hiscore_digits
     .import game_level
+    .import new_hiscore_flag
 
 
 .segment "OAM"
@@ -20,6 +22,7 @@
 
 .segment "BSS"
     game_paused: .res 1                     ; 0xFF if paused
+    game_over: .res 1
     last_processed_scroll_x: .res 1
     pipe_y: .res 8                          ; circular buffer containing pipe heights
     pipe_read_ptr: .res 1
@@ -30,11 +33,18 @@
     is_colliding: .res 1
     distance_to_pipe_start: .res 1
     distance_to_pipe: .res 1
+    white_bg_counter: .res 1
+    hiscore_lo_byte: .res 1
+    camera_shake_index: .res 1
+    camera_shake_base_x: .res 1
+    camera_shake_base_y: .res 1
+    camera_shake_base_x_coarse: .res 1
 
     .import nametbl1_attrs, nametbl2_attrs
-    .import bird_pos_x, bird_pos_y, bird_physics_active, bird_animation_speed, bird_animation_frames_left, bird_velocity
+    .import bird_dead, bird_pos_x, bird_pos_y, bird_physics_active, bird_animation_speed, bird_animation_frames_left, bird_velocity
 
     .import sprite_addr_lo, sprite_addr_hi, sprite_pos_x, sprite_pos_y
+    .import bird_collision_top, bird_collision_bottom
 
 .segment "BSS_NV"
     .import nametbl1_attrs, nametbl2_attrs
@@ -43,8 +53,10 @@
 .import bird_do_flap
 .import decimal_skip_leading_zeros
 .import decimal_increment
+.import decimal_is_greater_than
 .import draw_ground
 .import draw_sprites_to_oam
+.import highscore_save
 .import random_next
 .import random_seed
 .import set_bird_data_for_first_sprite
@@ -79,6 +91,7 @@ screen_game_init:
     STA pipe_last_write_ptr
     STA pipes_next_column
     STA is_colliding
+    STA white_bg_counter
 
     LDA #$FF
     STA distance_to_pipe
@@ -93,6 +106,29 @@ screen_game_init:
     LDA #9
     STA pipes_next_column
 @no_mapgen_alignment:
+
+    ; prepare pause sprite
+    LDA #.lobyte(pause_sprite)
+    STA sprite_addr_lo+7
+    LDA #0
+    STA sprite_addr_hi+7
+    LDA #$80
+    STA sprite_pos_x+7
+    LDA #$64
+    STA sprite_pos_y+7
+
+    ; set hiscore low byte
+    LDA game_level
+    ASL A
+    ASL A
+    CLC
+    ADC #.lobyte(easy_hiscore_digits)
+    STA hiscore_lo_byte
+
+    ; set screen offset index
+    LDA #16
+    STA camera_shake_index
+
     RTS
 
 screen_game_destroy:
@@ -110,9 +146,20 @@ screen_game_vblank:
     STA PPUADDR
     LDA #$00
     STA PPUADDR
+
+    LDA white_bg_counter
+    BNE @white_background
+
     LDA #$21
     STA PPUDATA
+    JMP @end_bg_color
 
+@white_background:                  ; a couple of frames after hitting something
+    DEC white_bg_counter
+    LDA #$30
+    STA PPUDATA
+
+@end_bg_color:
     ; palette corruption workaround
     LDA #$3F
     STA PPUADDR
@@ -123,7 +170,88 @@ screen_game_vblank:
 
     RTS
 
+screen_game_loop_paused:
+    ; check if START button was pressed in this frame
+    LDA gamepad_1_chg
+    AND BUTTON_START
+    BEQ @no_btn_start
+    JSR toggle_pause
+
+@no_btn_start:
+    ; add pause sprite
+    LDA #.hibyte(pause_sprite)
+    STA sprite_addr_hi+7
+
+    JSR set_bird_data_for_first_sprite
+    JSR draw_score
+    JSR draw_sprites_to_oam
+    JSR wait_for_szh
+    JSR draw_ground
+    RTS
+
+screen_game_loop_game_over:
+    ; apply some camera shake
+    LDA camera_shake_base_x_coarse
+    STA my_coarse_scroll_x
+
+    LDX camera_shake_index
+    LDA camera_shake_base_x
+    CLC
+    ADC camera_shake_x, X
+    STA my_scroll_x
+    BCC @no_carry_x
+    
+    INC my_coarse_scroll_x
+@no_carry_x:
+    LDA camera_shake_base_y
+    CLC
+    ADC camera_shake_y, X
+    STA my_scroll_y
+    
+    ; update sprite 0 Y position
+    LDA #$CE
+    SEC
+    SBC camera_shake_y, X
+    STA OAM+0
+
+    LDA camera_shake_index
+    CMP #16
+    BCS @no_increment
+
+    INC camera_shake_index
+
+@no_increment:
+    ; remove pause sprite
+    LDA #0
+    STA sprite_addr_hi+7
+
+    JSR update_bird
+
+    LDA bird_pos_y
+    CMP #$BA
+    BCC @no_cap_bird_y
+
+    LDA #$BA
+    STA bird_pos_y
+
+@no_cap_bird_y:
+
+    JSR set_bird_data_for_first_sprite
+    JSR draw_score
+
+    JSR draw_sprites_to_oam
+    JSR wait_for_szh
+    JSR draw_ground
+
+    RTS
+
 screen_game_loop:
+    LDA game_paused
+    BNE screen_game_loop_paused
+
+    LDA game_over
+    BNE screen_game_loop_game_over
+
     ; scroll main bg every single frame
     ; bankswitch every two frames
     INC global_scroll_x
@@ -165,20 +293,18 @@ screen_game_loop:
     LDA gamepad_1_chg
     AND BUTTON_START
     BEQ @no_btn_start
-    NOP                                 ; drop pause handler here
+    JSR toggle_pause
 @no_btn_start:
-    ; test - increment score each frame
-    LDX #.lobyte(current_score_digits)
-    STX SCRATCH+0
-    LDX #.hibyte(current_score_digits)
-    STX SCRATCH+1
-    LDX #4
-    STX SCRATCH+2
-    LDA frame_counter
-    AND #$1F
-    BNE :+
-    JSR decimal_increment
-:
+    ; remove pause sprite
+    LDA #0
+    STA sprite_addr_hi+7
+
+    LDA is_colliding
+    BEQ @no_collision
+
+    JSR kill_bird
+
+@no_collision:
     JSR process_map_gen
     JSR update_bird
     JSR process_collisions
@@ -602,7 +728,7 @@ generate_next_pipe:
     TXA
     AND #7
     STA pipe_write_ptr
-    RTS
+    ; fallthrough to RTS
 
 process_collisions_exit:
     RTS
@@ -617,7 +743,139 @@ process_collisions:
 
     LDA #80
     STA distance_to_pipe
+    INC pipe_read_ptr
+    LDA pipe_read_ptr
+    AND #7
+    STA pipe_read_ptr
 @no_reset:
+    ; check if we should add a point
+    LDA distance_to_pipe
+    CMP #$17
+    BNE @no_point
+
+    JSR add_point
+
+@no_point:
+    ; reset collision state
+    LDA #0
+    STA is_colliding
+
+    ; check if bird is flying to low
+    LDA bird_pos_y
+    CMP #$BE
+    BCC @not_to_low
+
+    LDY #1
+    STY is_colliding
+    RTS
+
+@not_to_low:
+    ; first, store pipe top and bottom position in scratch
+    LDX pipe_read_ptr
+    LDY game_level
+    LDA pipe_y, X
+    STA SCRATCH+0                   ; top position
+    CLC
+    ADC pipe_spacing_for_levels, Y
+    STA SCRATCH+1                   ; bottom position
+
+    ; iterate over bird's hitbox to check if any of its pixels hits a pipe
+    LDX distance_to_pipe
+    LDY #0
+@hitbox_loop:
+    ; first, check if we're hitting pipe horizontally in this column
+    CPX #$20                        ; the pipe width is 4 tiles ($20)
+    BCS @skip_checks                ; ignore all checks for this column
+
+    LDA bird_collision_top, Y
+    CLC
+    ADC bird_pos_y
+    CMP SCRATCH+0
+    BCS @no_hit_top
+    ; hit from the top, exit subroutine
+    LDA #1
+    STA is_colliding
+    RTS
+@no_hit_top:
+    LDA bird_collision_bottom, Y
+    CLC
+    ADC bird_pos_y
+    CMP SCRATCH+1
+    BCC @no_hit_bottom
+    ; hit from the bottom, exit subroutine
+    LDA #1
+    STA is_colliding
+    RTS
+@no_hit_bottom:
+@skip_checks:
+    DEX
+    INY
+    CPY #17
+    BCC @hitbox_loop
+    RTS
+
+add_point:
+    LDX #.lobyte(current_score_digits)
+    STX SCRATCH+0
+    LDX #.hibyte(current_score_digits)
+    STX SCRATCH+1
+    LDX #4
+    STX SCRATCH+2
+    JSR decimal_increment
+
+    LDX #.lobyte(current_score_digits)
+    STX SCRATCH+0
+    LDX #.hibyte(current_score_digits)
+    STX SCRATCH+1
+    LDX hiscore_lo_byte
+    STX SCRATCH+2
+    LDX #0
+    STX SCRATCH+3
+    LDX #4
+    STX SCRATCH+4
+    JSR decimal_is_greater_than
+
+    BEQ @no_new_hiscore
+
+    LDA #1
+    STA new_hiscore_flag
+
+    LDY #0
+:   LDA current_score_digits, Y
+    STA (SCRATCH+2), Y
+    INY
+    CPY #4
+    BCC :-
+
+    JSR highscore_save
+
+@no_new_hiscore:
+    RTS
+
+toggle_pause:
+    LDA game_paused
+    EOR #$FF
+    STA game_paused
+    RTS
+
+kill_bird:
+    LDA #1
+    STA game_over
+    STA bird_dead
+
+    LDA #5
+    STA white_bg_counter
+
+    LDA #0
+    STA camera_shake_index
+
+    LDA my_scroll_x
+    STA camera_shake_base_x
+    LDA my_scroll_y
+    STA camera_shake_base_y
+    LDA my_coarse_scroll_x
+    STA camera_shake_base_x_coarse
+
     RTS
 
 ;
@@ -633,7 +891,7 @@ ppu_nametable_hi_addrs:
 
 pipe_spacing_for_levels:
     ;     EASY MED  HARD
-    .byte $31, $29, $25
+    .byte $31, $2A, $25
 
 score_digit_lengths:
     ;      0   1   2   3   4   5   6   7   8   9
@@ -762,6 +1020,15 @@ score_sprites_hi:
     .byte .hibyte(score_7_sprite)
     .byte .hibyte(score_8_sprite)
     .byte .hibyte(score_9_sprite)
+
+pause_sprite:
+    ;     Ypos Tile Attr Xpos
+    .byte $00, $F0, $02, $EA    ; P
+    .byte $00, $E1, $02, $F3    ; A
+    .byte $00, $F5, $02, $FC    ; U
+    .byte $00, $F3, $02, $05    ; S
+    .byte $00, $E5, $02, $0E    ; E
+    .byte 0,   0,   0,   0      ; sprite end
 
 ; the LUTs below assign tile IDs to pipes
 ; having their Y pos set to particular value MOD 8
@@ -903,3 +1170,8 @@ pipe_up_tiles_hi:
     .byte .hibyte(pipe_up_6_tiles)
     .byte .hibyte(pipe_up_7_tiles)
 
+camera_shake_x:
+    .byte $03, $00, $00, $00, $03, $00, $00, $00, $02, $01, $00, $00, $01, $00, $00, $00, $00
+
+camera_shake_y:
+    .byte $00, $04, $00, $01, $00, $01, $03, $00, $03, $01, $02, $00, $00, $01, $00, $00, $00
