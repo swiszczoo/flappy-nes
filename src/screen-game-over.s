@@ -27,6 +27,7 @@
     game_over_state: .res 1
     current_score_counter: .res 5
     current_hiscore_counter: .res 5
+    game_over_selected_option: .res 1
 
     .import sprite_addr_lo, sprite_addr_hi, sprite_pos_x, sprite_pos_y
 
@@ -37,13 +38,14 @@
 .import draw_sprites_to_oam
 .import dynjmp
 .import set_bird_data_for_first_sprite
+.import set_game_state
 .import wait_for_szh
 .import wait_for_16_scanlines
 
 .segment "CODE"
 
 screen_game_over_init:
-    ; clear sprites 1, 2, 3, 4, 5, 6, 7, 8 and 9
+    ; clear sprites 1, 2, 3, 4, 5, 6, 7, 8, 9 and 10
     LDA #0
     STA sprite_addr_hi+1 
     STA sprite_addr_hi+2
@@ -54,12 +56,14 @@ screen_game_over_init:
     STA sprite_addr_hi+7
     STA sprite_addr_hi+8
     STA sprite_addr_hi+9
+    STA sprite_addr_hi+10
 
     ; clear load progress
     STA game_over_load_progress
     STA my_scroll_x
     STA my_coarse_scroll_x
     STA game_over_state
+    STA game_over_selected_option
 
     ; clear score counters
     LDX #5
@@ -152,8 +156,6 @@ screen_game_over_loop:
     .addr @counting
     .addr @main
 
-    
-
 @initial:
     LDX game_over_load_progress
     CPX #14
@@ -195,6 +197,30 @@ screen_game_over_loop:
 
     ; if it is, change state to and give control to player
     INC game_over_state
+    LDA #$76
+    STA sprite_pos_y+9
+    LDA game_over_menu_dot_x_pos
+    STA sprite_pos_x+9
+    LDA #.lobyte(dot_sprite)
+    STA sprite_addr_lo+9
+    LDA #.hibyte(dot_sprite)
+    STA sprite_addr_hi+9
+
+    ; also enable new highscore sprite if the flag is set
+    LDA new_hiscore_flag
+    BEQ @no_new_hiscore
+
+    LDA #.lobyte(sprite_new)
+    STA sprite_addr_lo+10
+    LDA #.hibyte(sprite_new)
+    STA sprite_addr_hi+10
+    LDA #$4E
+    STA sprite_pos_y+10
+    LDA #$91
+    STA sprite_pos_x+10
+
+@no_new_hiscore:
+
     JMP screen_game_over_loop_part2
 
 @counting_no_score_greater_than_real:
@@ -237,12 +263,29 @@ screen_game_over_loop:
     JMP screen_game_over_loop_part2
 
 @main:
-    
+    LDA gamepad_1_chg
+    AND #%00100011                      ; LEFT or RIGHT or SELECT
+    BEQ @main_no_change_menu_opt
+    LDA game_over_selected_option
+    EOR #1
+    STA game_over_selected_option
+@main_no_change_menu_opt:
+    LDX game_over_selected_option
+    LDA game_over_menu_dot_x_pos, X
+    STA sprite_pos_x+9
 
+    ; handle menu action
+    LDA gamepad_1_chg
+    AND #%10010000
+    BEQ @main_no_action
+
+    JSR handle_menu_action
+
+@main_no_action:
 screen_game_over_loop_part2:
     JSR set_bird_data_for_first_sprite
     JSR draw_sprites_to_oam
-    JSR wait_for_szh                ; we spin-wait for Sprite 0 Hit
+    JSR wait_for_szh                    ; we spin-wait for Sprite 0 Hit
     BIT PPUSTATUS
 
     LDA global_scroll_x
@@ -301,11 +344,33 @@ draw_score_sprite:
 @exit:
     RTS
 
+handle_menu_action:
+    LDA game_over_selected_option
+    JSR dynjmp
+    .addr @try_again
+    .addr @menu
+
+@try_again:
+    LDA STATE_RESTORE
+    JMP set_game_state
+
+@menu:
+    JMP ($FFFC)             ; reset the console
+
+
 ;
 ; Lookup tables
 ; =============
 
 .segment "RODATA"
+
+game_over_menu_dot_x_pos:
+    .byte $45, $9D
+
+dot_sprite:
+    ;     Ypos Tile Attr Xpos
+    .byte $00, $CB, $00, $00
+    .byte 0,   0,   0,   0
 
 game_over_load_stage_1:
     .byte 3, $3F, $0D, $18, $38, $28
@@ -503,3 +568,9 @@ sprite_mini_digit_hi:
     .byte .hibyte(sprite_mini_digit_8)
     .byte .hibyte(sprite_mini_digit_9)
 
+sprite_new:
+    ;     Ypos Tile Attr Xpos
+    .byte $00, $CC, $02, $F0
+    .byte $00, $CD, $02, $F8
+    .byte $00, $CE, $02, $00
+    .byte 0,   0,   0,   0

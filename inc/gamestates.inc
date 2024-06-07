@@ -4,3 +4,4 @@
 .define STATE_INSTRUCTIONS      #3
 .define STATE_GAME              #4
 .define STATE_GAME_OVER         #5
+.define STATE_RESTORE           #6

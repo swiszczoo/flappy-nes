@@ -98,10 +98,18 @@ screen_game_init:
     STA is_colliding
     STA white_bg_counter
 
+    ; clear game over state
+    STA game_over
+    STA game_over_countdown
+    STA game_over_clear_column
+    STA game_over_clear_addr+0
+    STA game_over_clear_addr+1
+
     LDA #$FF
     STA distance_to_pipe
 
     LDA my_scroll_x
+    STA global_scroll_x
     CLC
     SBC #0
     AND #$F8
@@ -930,6 +938,9 @@ toggle_pause:
     RTS
 
 kill_bird:
+    LDA my_scroll_x
+    STA global_scroll_x
+
     LDA #1
     STA game_over
     STA bird_dead
@@ -947,13 +958,14 @@ kill_bird:
     LDA my_coarse_scroll_x
     STA camera_shake_base_x_coarse
 
-    LDA #$48
+    LDA #$25
     STA game_over_countdown
 
     LDA my_coarse_scroll_x
     ASL A
     ASL A
     ORA #$20
+    EOR #4                          ; start with the second nametable
     STA game_over_clear_addr+0
     LDA my_scroll_x
     LSR A

@@ -7,6 +7,7 @@
     .import palette_addr
     .import frame_counter, my_ppuctrl, my_coarse_scroll_x, my_scroll_x, my_scroll_y
     .import skip_nmi, global_scroll_x, global_chr_bank
+    .import current_score_digits
     .import hiscore_digits
     .import gamepad_1_chg
     .import oam_offset
@@ -40,6 +41,12 @@ screen_instructions_init:
     LDA #0
     STA a_btn_animation_state
     STA new_hiscore_flag
+    
+    ; clear score
+    STA current_score_digits+0
+    STA current_score_digits+1
+    STA current_score_digits+2
+    STA current_score_digits+3
 
     ; set sprites
     ; GET READY text

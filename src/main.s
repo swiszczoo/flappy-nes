@@ -18,6 +18,10 @@
 .import screen_main_menu_destroy
 .import screen_main_menu_vblank
 .import screen_main_menu_loop
+.import screen_restore_init
+.import screen_restore_destroy
+.import screen_restore_vblank
+.import screen_restore_loop
 .import screen_transition_init
 .import screen_transition_destroy
 .import screen_transition_vblank
@@ -409,6 +413,7 @@ set_game_state:
     .addr screen_instructions_destroy ; STATE_INSTRUCTIONS
     .addr screen_game_destroy       ; STATE_GAME
     .addr screen_game_over_destroy  ; STATE_GAME_OVER
+    .addr screen_restore_destroy    ; STATE_RESTORE
 :
 
     PLA
@@ -423,6 +428,7 @@ set_game_state:
     .addr screen_instructions_init  ; STATE_INSTRUCTIONS
     .addr screen_game_init          ; STATE_GAME
     .addr screen_game_over_init     ; STATE_GAME_OVER
+    .addr screen_restore_init       ; STATE_RESTORE
 :   
 
     ; set game_state_vblank func ptr to a new vblank handler
@@ -505,6 +511,7 @@ func_screen_vblank_lo:
     .byte .lobyte(screen_instructions_vblank)       ; STATE_INSTRUCTIONS
     .byte .lobyte(screen_game_vblank)               ; STATE_GAME
     .byte .lobyte(screen_game_over_vblank)          ; STATE_GAME_OVER
+    .byte .lobyte(screen_restore_vblank)            ; STATE_RESTORE
 
 func_screen_vblank_hi:
     .byte .hibyte(screen0_vblank)                   ; STATE_NO_SCREEN
@@ -513,6 +520,7 @@ func_screen_vblank_hi:
     .byte .hibyte(screen_instructions_vblank)       ; STATE_INSTRUCTIONS
     .byte .hibyte(screen_game_vblank)               ; STATE_GAME
     .byte .hibyte(screen_game_over_vblank)          ; STATE_GAME_OVER
+    .byte .hibyte(screen_restore_vblank)            ; STATE_RESTORE
 
 func_screen_loop_lo:
     .byte .lobyte(nop_sub)                          ; STATE_NO_SCREEN
@@ -521,6 +529,7 @@ func_screen_loop_lo:
     .byte .lobyte(screen_instructions_loop)         ; STATE_INSTRUCTIONS
     .byte .lobyte(screen_game_loop)                 ; STATE_GAME
     .byte .lobyte(screen_game_over_loop)            ; STATE_GAME_OVER
+    .byte .lobyte(screen_restore_loop)              ; STATE_RESTORE
 
 func_screen_loop_hi:
     .byte .hibyte(nop_sub)                          ; STATE_NO_SCREEN
@@ -529,6 +538,7 @@ func_screen_loop_hi:
     .byte .hibyte(screen_instructions_loop)         ; STATE_INSTRUCTIONS
     .byte .hibyte(screen_game_loop)                 ; STATE_GAME
     .byte .hibyte(screen_game_over_loop)            ; STATE_GAME_OVER
+    .byte .hibyte(screen_restore_loop)              ; STATE_RESTORE
 
 .export main, irq, nmi
 .export dynjmp, dynjsr
