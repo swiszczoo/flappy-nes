@@ -12,6 +12,7 @@
 
     .import current_score_digits
     .import easy_hiscore_digits
+    .import prev_hiscore_digits
     .import game_level
     .import new_hiscore_flag
 
@@ -39,6 +40,9 @@
     camera_shake_base_x: .res 1
     camera_shake_base_y: .res 1
     camera_shake_base_x_coarse: .res 1
+    game_over_countdown: .res 1
+    game_over_clear_column: .res 1
+    game_over_clear_addr: .res 2
 
     .import nametbl1_attrs, nametbl2_attrs
     .import bird_dead, bird_pos_x, bird_pos_y, bird_physics_active, bird_animation_speed, bird_animation_frames_left, bird_velocity
@@ -60,6 +64,7 @@
 .import random_next
 .import random_seed
 .import set_bird_data_for_first_sprite
+.import set_game_state
 .import update_bird
 .import wait_for_szh
 
@@ -128,6 +133,20 @@ screen_game_init:
     ; set screen offset index
     LDA #16
     STA camera_shake_index
+
+    ; copy current hiscore to prev hiscore
+    LDA game_level
+    ASL A
+    ASL A
+    TAX
+    LDA easy_hiscore_digits+0, X
+    STA prev_hiscore_digits+0
+    LDA easy_hiscore_digits+1, X
+    STA prev_hiscore_digits+1
+    LDA easy_hiscore_digits+2, X
+    STA prev_hiscore_digits+2
+    LDA easy_hiscore_digits+3, X
+    STA prev_hiscore_digits+3
 
     RTS
 
@@ -236,21 +255,73 @@ screen_game_loop_game_over:
 
 @no_cap_bird_y:
 
+    LDA game_over_countdown
+    BNE @no_game_over_yet
+
+    LDA game_over_clear_addr+0
+    STA PPU_UPD_BUF+1
+    LDA game_over_clear_addr+1
+    STA PPU_UPD_BUF+2
+    CLC
+    ADC #1
+    STA game_over_clear_addr+1
+    CMP #$20
+    BCC :+
+    LDA game_over_clear_addr+0
+    EOR #4
+    STA game_over_clear_addr+0
+    LDA #0
+    STA game_over_clear_addr+1
+:
+
+    LDA #($80 | 24)
+    STA PPU_UPD_BUF+0
+
+    LDA #0
+    LDX #24
+:
+    DEX
+    STA PPU_UPD_BUF+3, X
+    BNE :-
+
+    INC game_over_clear_column
+    LDA game_over_clear_column
+    CMP #$40
+    BCC :+
+
+    LDA STATE_GAME_OVER
+    JSR set_game_state
+    JSR draw_sprites_to_oam
+    JSR wait_for_szh
+    JMP draw_ground
+:
+    
+    JMP @no_game_over_increment
+
+@no_game_over_yet:
+    DEC game_over_countdown
+
+@no_game_over_increment:
+
     JSR set_bird_data_for_first_sprite
     JSR draw_score
 
     JSR draw_sprites_to_oam
     JSR wait_for_szh
-    JSR draw_ground
+    JMP draw_ground
 
-    RTS
+screen_game_loop_paused_jmp:
+    JMP screen_game_loop_paused
+
+screen_game_loop_game_over_jmp:
+    JMP screen_game_loop_game_over
 
 screen_game_loop:
     LDA game_paused
-    BNE screen_game_loop_paused
+    BNE screen_game_loop_paused_jmp
 
     LDA game_over
-    BNE screen_game_loop_game_over
+    BNE screen_game_loop_game_over_jmp
 
     ; scroll main bg every single frame
     ; bankswitch every two frames
@@ -876,6 +947,20 @@ kill_bird:
     LDA my_coarse_scroll_x
     STA camera_shake_base_x_coarse
 
+    LDA #$48
+    STA game_over_countdown
+
+    LDA my_coarse_scroll_x
+    ASL A
+    ASL A
+    ORA #$20
+    STA game_over_clear_addr+0
+    LDA my_scroll_x
+    LSR A
+    LSR A
+    LSR A
+    STA game_over_clear_addr+1
+
     RTS
 
 ;
@@ -1042,9 +1127,9 @@ pipe_down_0_tiles:
 
 pipe_down_1_tiles:
     .byte $40, $98, $50
-    .byte $41, $99, $51
-    .byte $42, $9A, $52
-    .byte $43, $9B, $53
+    .byte $41, $99, $50
+    .byte $42, $9A, $50
+    .byte $43, $9B, $50
 
 pipe_down_2_tiles:
     .byte $44, $94, $54

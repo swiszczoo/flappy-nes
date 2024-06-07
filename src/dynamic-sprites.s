@@ -8,7 +8,7 @@
 .segment "OAM"
     .import OAM
 
-.define SPRITE_COUNT                    8   ; must be a power of 2
+.define SPRITE_COUNT                    16   ; must be a power of 2
 
 .segment "BSS"
     first_sprite: .res 1

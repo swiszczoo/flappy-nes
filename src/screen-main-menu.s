@@ -546,6 +546,8 @@ wait_for_16_scanlines:
     NOP
     RTS
 
+.export wait_for_16_scanlines
+
 ;
 ; Lookup tables
 ; =============

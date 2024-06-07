@@ -6,6 +6,10 @@
 .import screen_game_destroy
 .import screen_game_vblank
 .import screen_game_loop
+.import screen_game_over_init
+.import screen_game_over_destroy
+.import screen_game_over_vblank
+.import screen_game_over_loop
 .import screen_instructions_init
 .import screen_instructions_destroy
 .import screen_instructions_vblank
@@ -45,6 +49,7 @@
     easy_hiscore_digits: .res 4
     medium_hiscore_digits: .res 4
     hard_hiscore_digits: .res 4
+    prev_hiscore_digits: .res 4
 
     current_score_digits: .res 4
     new_hiscore_flag: .res 1
@@ -55,7 +60,7 @@
     .export frame_counter, my_ppuctrl, my_coarse_scroll_x, my_scroll_x, my_scroll_y, skip_nmi
     .export SCRATCH, palette_addr, global_scroll_x, global_chr_bank
     .export gamepad_1, gamepad_2, game_level
-    .export easy_hiscore_digits, medium_hiscore_digits, hard_hiscore_digits 
+    .export easy_hiscore_digits, medium_hiscore_digits, hard_hiscore_digits, prev_hiscore_digits
     .export current_score_digits
     .export gamepad_1_chg, gamepad_2_chg
     .export new_hiscore_flag
@@ -75,9 +80,13 @@
     .export nametbl1_attrs, nametbl2_attrs
 
 
-.segment "CODE"
-CHR_PAGE: .byte $FF
+.segment "TMCODE"
+CHR_PAGE:
+    .byte $00, $01, $02, $03, $04, $05, $06, $07, $08, $09, $0A, $0B, $0C, $0D, $0E, $0F
+    .byte $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $1A, $1B, $1C, $1D, $1E, $1F
 
+
+.segment "CODE"
 main:
     ; turn off rendering
     LDA #0
@@ -183,10 +192,6 @@ update_ppu_from_rom:
     STA PPUCTRL
     INY
 
-    ;LDA SCRATCH+0
-    ;AND #$7F                        ; ignore MSB of length
-    ;STA SCRATCH+0
-
     LDA (ppu_update_addr), Y
     STA PPUADDR
     INY
@@ -214,7 +219,9 @@ vblank_handler:
     STA OAMDMA                      ; copy sprites data to OAM using DMA
 
     LDA global_chr_bank
-    STA CHR_PAGE
+    AND #$1F
+    TAX
+    STA CHR_PAGE, X
 
     LDA ppu_update_addr+1           ; load hi byte of update instructions address
     BEQ :+
@@ -401,6 +408,7 @@ set_game_state:
     .addr screen_transition_destroy ; STATE_TRANSITION
     .addr screen_instructions_destroy ; STATE_INSTRUCTIONS
     .addr screen_game_destroy       ; STATE_GAME
+    .addr screen_game_over_destroy  ; STATE_GAME_OVER
 :
 
     PLA
@@ -414,6 +422,7 @@ set_game_state:
     .addr screen_transition_init    ; STATE_TRANSITION
     .addr screen_instructions_init  ; STATE_INSTRUCTIONS
     .addr screen_game_init          ; STATE_GAME
+    .addr screen_game_over_init     ; STATE_GAME_OVER
 :   
 
     ; set game_state_vblank func ptr to a new vblank handler
@@ -495,6 +504,7 @@ func_screen_vblank_lo:
     .byte .lobyte(screen_transition_vblank)         ; STATE_TRANSITION
     .byte .lobyte(screen_instructions_vblank)       ; STATE_INSTRUCTIONS
     .byte .lobyte(screen_game_vblank)               ; STATE_GAME
+    .byte .lobyte(screen_game_over_vblank)          ; STATE_GAME_OVER
 
 func_screen_vblank_hi:
     .byte .hibyte(screen0_vblank)                   ; STATE_NO_SCREEN
@@ -502,6 +512,7 @@ func_screen_vblank_hi:
     .byte .hibyte(screen_transition_vblank)         ; STATE_TRANSITION
     .byte .hibyte(screen_instructions_vblank)       ; STATE_INSTRUCTIONS
     .byte .hibyte(screen_game_vblank)               ; STATE_GAME
+    .byte .hibyte(screen_game_over_vblank)          ; STATE_GAME_OVER
 
 func_screen_loop_lo:
     .byte .lobyte(nop_sub)                          ; STATE_NO_SCREEN
@@ -509,6 +520,7 @@ func_screen_loop_lo:
     .byte .lobyte(screen_transition_loop)           ; STATE_TRANSITION
     .byte .lobyte(screen_instructions_loop)         ; STATE_INSTRUCTIONS
     .byte .lobyte(screen_game_loop)                 ; STATE_GAME
+    .byte .lobyte(screen_game_over_loop)            ; STATE_GAME_OVER
 
 func_screen_loop_hi:
     .byte .hibyte(nop_sub)                          ; STATE_NO_SCREEN
@@ -516,6 +528,7 @@ func_screen_loop_hi:
     .byte .hibyte(screen_transition_loop)           ; STATE_TRANSITION
     .byte .hibyte(screen_instructions_loop)         ; STATE_INSTRUCTIONS
     .byte .hibyte(screen_game_loop)                 ; STATE_GAME
+    .byte .hibyte(screen_game_over_loop)            ; STATE_GAME_OVER
 
 .export main, irq, nmi
 .export dynjmp, dynjsr
